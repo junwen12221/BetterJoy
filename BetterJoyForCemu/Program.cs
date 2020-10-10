@@ -153,7 +153,7 @@ namespace BetterJoyForCemu {
                             isLeft = false;
                             form.AppendTextBox("Right Joy-Con connected.\r\n"); break;
                         case product_pro:
-                            isLeft = true;
+                            isLeft = j.Count % 2 == 0;
                             form.AppendTextBox("Pro controller connected.\r\n"); break;
                         case product_snes:
                             isLeft = true;
