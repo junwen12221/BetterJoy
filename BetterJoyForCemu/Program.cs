@@ -164,6 +164,12 @@ namespace BetterJoyForCemu {
                             form.AppendTextBox("Non Joy-Con Nintendo input device skipped.\r\n"); break;
                     }
 
+                    if (this.form.right.Count() > j.Count()) {
+                        if (this.form.right[j.Count()].Checked) {
+                            isLeft = false;
+                        }
+                    }
+
                     // Add controller to block-list for HidGuardian
                     if (Program.useHIDG) {
                         HttpWebRequest request = (HttpWebRequest)WebRequest.Create(@"http://localhost:26762/api/v1/hidguardian/affected/add/");

@@ -27,6 +27,7 @@ namespace BetterJoyForCemu {
         public bool shakeInputEnabled = Boolean.Parse(ConfigurationManager.AppSettings["EnableShakeInput"]);
         public float shakeSesitivity = float.Parse(ConfigurationManager.AppSettings["ShakeInputSensitivity"]);
         public float shakeDelay = float.Parse(ConfigurationManager.AppSettings["ShakeInputDelay"]);
+        public List<CheckBox> right;
 
         public enum NonOriginalController : int {
             Disabled = 0,
@@ -49,6 +50,7 @@ namespace BetterJoyForCemu {
 
             con = new List<Button> { con1, con2, con3, con4 };
             loc = new List<Button> { loc1, loc2, loc3, loc4 };
+            right = new List<CheckBox> { right1, right2, right3, right4 };
 
             //list all options
             string[] myConfigs = ConfigurationManager.AppSettings.AllKeys;
@@ -379,6 +381,29 @@ namespace BetterJoyForCemu {
         private void btn_reassign_open_Click(object sender, EventArgs e) {
             Reassign mapForm = new Reassign();
             mapForm.ShowDialog();
+        }
+
+        private void right1_CheckedChanged(object sender, EventArgs e) {
+            if (Program.mgr.j.Count() >= 1) {
+                Program.mgr.j[0].isLeft = !right1.Checked;
+            }
+        }
+        private void right2_CheckedChanged(object sender, EventArgs e) {
+            if (Program.mgr.j.Count() >= 2) {
+                Program.mgr.j[1].isLeft = !right2.Checked;
+            }
+        }
+
+        private void right3_CheckedChanged(object sender, EventArgs e) {
+            if (Program.mgr.j.Count() >= 3) {
+                Program.mgr.j[2].isLeft = !right3.Checked;
+            }
+        }
+
+        private void right4_CheckedChanged(object sender, EventArgs e) {
+            if (Program.mgr.j.Count() >= 4) {
+                Program.mgr.j[3].isLeft = !right4.Checked;
+            }
         }
 
         private void CountDown(object sender, EventArgs e) {
