@@ -33,7 +33,8 @@ namespace BetterJoyForCemu {
             RUMBLE,
             SHAKE,
         };
-        public DebugType debug_type = DebugType.NONE;
+        public DebugType debug_type = (DebugType)int.Parse(ConfigurationManager.AppSettings["DebugType"]);
+        //public DebugType debug_type = DebugType.NONE; //Keep this for manual debugging during development.
         public bool isLeft;
         public enum state_ : uint {
             NOT_ATTACHED,
@@ -123,45 +124,24 @@ namespace BetterJoyForCemu {
         private const uint report_len = 49;
 
         private struct Rumble {
-            private float h_f, l_f;
-            public float amp;
-            public bool controller_informed;
-            public long end_rumble_time_milliseconds;
+            public Queue<float[]> queue;
 
-            public void set_vals(float low_freq, float high_freq, float amplitude, int rumble_duration_ms = 0) {
-                h_f = high_freq;
-                amp = amplitude;
-                l_f = low_freq;
-                if (rumble_duration_ms != 0) {
-                    end_rumble_time_milliseconds = DateTimeOffset.Now.ToUnixTimeMilliseconds() + rumble_duration_ms;
-                } else {
-                    end_rumble_time_milliseconds = 0;
+            public void set_vals(float low_freq, float high_freq, float amplitude) {
+                float[] rumbleQueue = new float[] {low_freq, high_freq, amplitude};
+                // Keep a queue of 15 items, discard oldest item if queue is full.
+                if (queue.Count > 15) {
+                    queue.Dequeue();
                 }
-
-                controller_informed = false;
+                queue.Enqueue(rumbleQueue);
             }
-            public Rumble(float low_freq, float high_freq, float amplitude, int rumble_duration_ms = 0) {
-                h_f = high_freq;
-                amp = amplitude;
-                l_f = low_freq;
-                if (rumble_duration_ms != 0) {
-                    end_rumble_time_milliseconds = DateTimeOffset.Now.ToUnixTimeMilliseconds() + rumble_duration_ms;
-                } else {
-                    end_rumble_time_milliseconds = 0;
-                }
-                controller_informed = false;
+            public Rumble(float[] rumble_info) {
+                queue = new Queue<float[]>();
+                queue.Enqueue(rumble_info);
             }
             private float clamp(float x, float min, float max) {
                 if (x < min) return min;
                 if (x > max) return max;
                 return x;
-            }
-            public void Update() {
-                if (end_rumble_time_milliseconds != 0 && DateTimeOffset.Now.ToUnixTimeMilliseconds() > end_rumble_time_milliseconds) {
-                    controller_informed = false;
-                    end_rumble_time_milliseconds = 0;
-                    amp = 0;
-                }
             }
 
             private byte EncodeAmp(float amp) {
@@ -181,21 +161,22 @@ namespace BetterJoyForCemu {
 
             public byte[] GetData() {
                 byte[] rumble_data = new byte[8];
+                float[] queued_data = queue.Dequeue();
 
-                if (amp == 0.0f) {
+                if (queued_data[2] == 0.0f) {
                     rumble_data[0] = 0x0;
                     rumble_data[1] = 0x1;
                     rumble_data[2] = 0x40;
                     rumble_data[3] = 0x40;
                 } else {
-                    l_f = clamp(l_f, 40.875885f, 626.286133f);
-                    h_f = clamp(h_f, 81.75177f, 1252.572266f);
+                    queued_data[0] = clamp(queued_data[0], 40.875885f, 626.286133f);
+                    queued_data[1] = clamp(queued_data[1], 81.75177f, 1252.572266f);
 
-                    amp = clamp(amp, 0.0f, 1.0f);
+                    queued_data[2] = clamp(queued_data[2], 0.0f, 1.0f);
 
-                    UInt16 hf = (UInt16)((Math.Round(32f * Math.Log(h_f * 0.1f, 2)) - 0x60) * 4);
-                    byte lf = (byte)(Math.Round(32f * Math.Log(l_f * 0.1f, 2)) - 0x40);
-                    byte hf_amp = EncodeAmp(amp);
+                    UInt16 hf = (UInt16)((Math.Round(32f * Math.Log(queued_data[1] * 0.1f, 2)) - 0x60) * 4);
+                    byte lf = (byte)(Math.Round(32f * Math.Log(queued_data[0] * 0.1f, 2)) - 0x40);
+                    byte hf_amp = EncodeAmp(queued_data[2]);
 
                     UInt16 lf_amp = (UInt16)(Math.Round((double)hf_amp) * .5);
                     byte parity = (byte)(lf_amp % 2);
@@ -243,7 +224,6 @@ namespace BetterJoyForCemu {
         ushort ds4_ts = 0;
         ulong lag;
 
-        int rumblePeriod = Int32.Parse(ConfigurationManager.AppSettings["RumblePeriod"]);
         int lowFreq = Int32.Parse(ConfigurationManager.AppSettings["LowFreqRumble"]);
         int highFreq = Int32.Parse(ConfigurationManager.AppSettings["HighFreqRumble"]);
 
@@ -267,7 +247,7 @@ namespace BetterJoyForCemu {
             handle = handle_;
             imu_enabled = imu;
             do_localize = localize;
-            rumble_obj = new Rumble(lowFreq, highFreq, 0, 0);
+            rumble_obj = new Rumble(new float[] {lowFreq, highFreq, 0});
             for (int i = 0; i < buttons_down_timestamp.Length; i++)
                 buttons_down_timestamp[i] = -1;
             filterweight = alpha;
@@ -302,17 +282,19 @@ namespace BetterJoyForCemu {
         }
 
         public void ReceiveRumble(Xbox360FeedbackReceivedEventArgs e) {
-            SetRumble(lowFreq, highFreq, (float)Math.Max(e.LargeMotor, e.SmallMotor) / (float)255, rumblePeriod);
+            DebugPrint("Rumble data Recived: XInput", DebugType.RUMBLE);
+            SetRumble(lowFreq, highFreq, (float)Math.Max(e.LargeMotor, e.SmallMotor) / (float)255);
 
             if (other != null && other != this)
-                other.SetRumble(lowFreq, highFreq, (float)Math.Max(e.LargeMotor, e.SmallMotor) / (float)255, rumblePeriod);
+                other.SetRumble(lowFreq, highFreq, (float)Math.Max(e.LargeMotor, e.SmallMotor) / (float)255);
         }
 
         public void Ds4_FeedbackReceived(DualShock4FeedbackReceivedEventArgs e) {
-            SetRumble(lowFreq, highFreq, (float)Math.Max(e.LargeMotor, e.SmallMotor) / (float)255, rumblePeriod);
+            DebugPrint("Rumble data Recived: DS4", DebugType.RUMBLE);
+            SetRumble(lowFreq, highFreq, (float)Math.Max(e.LargeMotor, e.SmallMotor) / (float)255);
 
             if (other != null && other != this)
-                other.SetRumble(lowFreq, highFreq, (float)Math.Max(e.LargeMotor, e.SmallMotor) / (float)255, rumblePeriod);
+                other.SetRumble(lowFreq, highFreq, (float)Math.Max(e.LargeMotor, e.SmallMotor) / (float)255);
         }
 
         public void DebugPrint(String s, DebugType d) {
@@ -787,10 +769,8 @@ namespace BetterJoyForCemu {
             stop_polling = false;
             int attempts = 0;
             while (!stop_polling & state > state_.NO_JOYCONS) {
-                rumble_obj.Update();
-                if (!rumble_obj.controller_informed) {
+                if (rumble_obj.queue.Count > 0) {
                     SendRumble(rumble_obj.GetData());
-                    rumble_obj.controller_informed = true;
                 }
                 int a = ReceiveRaw();
 
@@ -834,14 +814,15 @@ namespace BetterJoyForCemu {
 
                 stick_precal[0] = (UInt16)(stick_raw[0] | ((stick_raw[1] & 0xf) << 8));
                 stick_precal[1] = (UInt16)((stick_raw[1] >> 4) | (stick_raw[2] << 4));
-                ushort[] cal = form.nonOriginal ? new ushort[6] { 2048, 2048, 2048, 2048, 2048, 2048 } : stick_cal;
-                ushort dz = form.nonOriginal ? (ushort)200 : deadzone;
+                ushort[] cal = form.useControllerStickCalibration ? stick_cal : new ushort[6] { 2048, 2048, 2048, 2048, 2048, 2048 };
+                ushort dz = form.useControllerStickCalibration ? deadzone : (ushort)200;
                 stick = CenterSticks(stick_precal, cal, dz);
 
                 if (isPro) {
                     stick2_precal[0] = (UInt16)(stick2_raw[0] | ((stick2_raw[1] & 0xf) << 8));
                     stick2_precal[1] = (UInt16)((stick2_raw[1] >> 4) | (stick2_raw[2] << 4));
-                    stick2 = CenterSticks(stick2_precal, form.nonOriginal ? cal : stick2_cal, deadzone2);
+                    ushort dz2 = form.useControllerStickCalibration ? deadzone2 : (ushort)200;
+                    stick2 = CenterSticks(stick2_precal, form.useControllerStickCalibration ? stick2_cal : cal, dz2);
                 }
 
                 // Read other Joycon's sticks
@@ -944,7 +925,7 @@ namespace BetterJoyForCemu {
                 acc_r[1] = (Int16)(report_buf[15 + n * 12] | ((report_buf[16 + n * 12] << 8) & 0xff00));
                 acc_r[2] = (Int16)(report_buf[17 + n * 12] | ((report_buf[18 + n * 12] << 8) & 0xff00));
 
-                if (form.nonOriginal) {
+                if (form.allowCalibration) {
                     for (int i = 0; i < 3; ++i) {
                         switch (i) {
                             case 0:
@@ -1056,9 +1037,9 @@ namespace BetterJoyForCemu {
             return (byte)Math.Max(Byte.MinValue, Math.Min(Byte.MaxValue, 127 - stick_value * Byte.MaxValue));
         }
 
-        public void SetRumble(float low_freq, float high_freq, float amp, int rumble_duration_ms = 0) {
+        public void SetRumble(float low_freq, float high_freq, float amp) {
             if (state <= Joycon.state_.ATTACHED) return;
-            rumble_obj.set_vals(low_freq, high_freq, amp, rumble_duration_ms);
+            rumble_obj.set_vals(low_freq, high_freq, amp);
         }
 
         private void SendRumble(byte[] buf) {

@@ -15,7 +15,9 @@ using System.Xml.Linq;
 
 namespace BetterJoyForCemu {
     public partial class MainForm : Form {
-        public bool nonOriginal = Boolean.Parse(ConfigurationManager.AppSettings["NonOriginalController"]);
+        public bool useControllerStickCalibration;
+        public bool nonOriginal;
+        public bool allowCalibration = Boolean.Parse(ConfigurationManager.AppSettings["AllowCalibration"]);
         public List<Button> con, loc;
         public bool calibrate;
         public List<KeyValuePair<string, float[]>> caliData;
@@ -26,16 +28,23 @@ namespace BetterJoyForCemu {
         public float shakeSesitivity = float.Parse(ConfigurationManager.AppSettings["ShakeInputSensitivity"]);
         public float shakeDelay = float.Parse(ConfigurationManager.AppSettings["ShakeInputDelay"]);
 
+        public enum NonOriginalController : int {
+            Disabled = 0,
+            DefaultCalibration = 1,
+            ControllerCalibration = 2,
+        }
+
         public MainForm() {
             xG = new List<int>(); yG = new List<int>(); zG = new List<int>();
             xA = new List<int>(); yA = new List<int>(); zA = new List<int>();
             caliData = new List<KeyValuePair<string, float[]>> {
                 new KeyValuePair<string, float[]>("0", new float[6] {0,0,0,-710,0,0})
             };
+            SetNonOriginalControllerSettings();
 
             InitializeComponent();
 
-            if (!nonOriginal)
+            if (!allowCalibration)
                 AutoCalibrate.Hide();
 
             con = new List<Button> { con1, con2, con3, con4 };
@@ -58,6 +67,28 @@ namespace BetterJoyForCemu {
 
                 childControl.MouseClick += cbBox_Changed;
                 settingsTable.Controls.Add(childControl, 1, i);
+            }
+        }
+
+        private void SetNonOriginalControllerSettings() {
+            Enum.TryParse(ConfigurationManager.AppSettings["NonOriginalController"], true, out NonOriginalController nonOriginalController);
+            switch ((int)nonOriginalController) {
+                case 0:
+                    nonOriginal = false;
+                    break;
+                case 1:
+                case 2:
+                    nonOriginal = true;
+                    break;       
+            }
+            switch ((int)nonOriginalController) {
+                case 0:
+                case 2:
+                    useControllerStickCalibration = true;
+                    break;
+                case 1:
+                    useControllerStickCalibration = false;
+                    break;
             }
         }
 
@@ -141,7 +172,7 @@ namespace BetterJoyForCemu {
         bool showAsXInput = Boolean.Parse(ConfigurationManager.AppSettings["ShowAsXInput"]);
         bool showAsDS4 = Boolean.Parse(ConfigurationManager.AppSettings["ShowAsDS4"]);
 
-        public void locBtnClick(object sender, EventArgs e) {
+        public async void locBtnClickAsync(object sender, EventArgs e) {
             Button bb = sender as Button;
 
             if (bb.Tag.GetType() == typeof(Button)) {
@@ -149,7 +180,9 @@ namespace BetterJoyForCemu {
 
                 if (button.Tag.GetType() == typeof(Joycon)) {
                     Joycon v = (Joycon)button.Tag;
-                    v.SetRumble(160.0f, 320.0f, 1.0f, 300);
+                    v.SetRumble(160.0f, 320.0f, 1.0f);
+                    await Task.Delay(300);
+                    v.SetRumble(160.0f, 320.0f, 0);
                 }
             }
         }

@@ -229,7 +229,7 @@ namespace BetterJoyForCemu {
 
                                 form.loc[ii].Invoke(new MethodInvoker(delegate {
                                     form.loc[ii].Tag = v;
-                                    form.loc[ii].Click += new EventHandler(form.locBtnClick);
+                                    form.loc[ii].Click += new EventHandler(form.locBtnClickAsync);
                                 }));
 
                                 break;
@@ -318,7 +318,7 @@ namespace BetterJoyForCemu {
                     }
 
                     jc.Begin();
-                    if (form.nonOriginal) {
+                    if (form.allowCalibration) {
                         jc.getActiveData();
                     }
 
